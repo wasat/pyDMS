@@ -295,10 +295,14 @@ def resampleLowResToHighRes(lowResScene, highResScene, resampleAlg="cubic"):
     return data
 
 
-@stencil(cval=1.0)
+@njit
 def removeEdgeNaNs(a):
-    if np.isnan(a[0, 0]) and (not np.isnan(a[-1, 0]) or not np.isnan(a[1, 0]) or
-                              not np.isnan(a[0, -1]) or not np.isnan(a[0, 1])):
-        return np.nanmean(np.array([a[-1, 0], a[1, 0], a[0, -1], a[0, 1]]))
-    else:
-        return a[0, 0]
+    out = np.copy(a)
+    for i in range(1, a.shape[0] - 1):
+        for j in range(1, a.shape[1] - 1):
+            if np.isnan(a[i, j]):
+                neighbors = [a[i - 1, j], a[i + 1, j], a[i, j - 1], a[i, j + 1]]
+                valid_neighbors = [v for v in neighbors if not np.isnan(v)]
+                if valid_neighbors:
+                    out[i, j] = sum(valid_neighbors) / len(valid_neighbors)
+    return out
