@@ -297,6 +297,22 @@ def resampleLowResToHighRes(lowResScene, highResScene, resampleAlg="cubic"):
 def removeEdgeNaNs(a):
     if np.isnan(a[0, 0]) and (not np.isnan(a[-1, 0]) or not np.isnan(a[1, 0]) or
                               not np.isnan(a[0, -1]) or not np.isnan(a[0, 1])):
-        return np.nanmean(np.array([a[-1, 0], a[1, 0], a[0, -1], a[0, 1]]))
+        # np.nanmean(np.array([...])) isn't supported by numba's stencil typing;
+        # average the (up to 4) non-NaN neighbours by hand instead.
+        total = 0.0
+        count = 0
+        if not np.isnan(a[-1, 0]):
+            total += a[-1, 0]
+            count += 1
+        if not np.isnan(a[1, 0]):
+            total += a[1, 0]
+            count += 1
+        if not np.isnan(a[0, -1]):
+            total += a[0, -1]
+            count += 1
+        if not np.isnan(a[0, 1]):
+            total += a[0, 1]
+            count += 1
+        return total / count
     else:
         return a[0, 0]
