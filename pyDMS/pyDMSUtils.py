@@ -9,7 +9,7 @@ import os
 
 import numpy as np
 import scipy.ndimage as ndi
-from numba import njit, stencil
+from numba import njit
 
 from osgeo import gdal
 from pyproj import Proj, Transformer
@@ -278,8 +278,7 @@ def resampleLowResToHighRes(lowResScene, highResScene, resampleAlg="cubic"):
 
     data = lowResScene_resampled.GetRasterBand(1).ReadAsArray()
     # Sometimes there can be 1 HR pixel NaN border arond LR invalid pixels due to resampling.
-    # Fuction below fixes this. Image border pixels are excluded due to numba stencil
-    # limitations.
+    # Fuction below fixes this. Image border pixels are left untouched (not consumed here).
     data[1:-1, 1:-1] = removeEdgeNaNs(data)[1:-1, 1:-1]
 
     # The resampled array might be slightly smaller then the high-res because
@@ -293,26 +292,31 @@ def resampleLowResToHighRes(lowResScene, highResScene, resampleAlg="cubic"):
     return data
 
 
-@stencil(cval=1.0)
+@njit
 def removeEdgeNaNs(a):
-    if np.isnan(a[0, 0]) and (not np.isnan(a[-1, 0]) or not np.isnan(a[1, 0]) or
-                              not np.isnan(a[0, -1]) or not np.isnan(a[0, 1])):
-        # np.nanmean(np.array([...])) isn't supported by numba's stencil typing;
-        # average the (up to 4) non-NaN neighbours by hand instead.
-        total = 0.0
-        count = 0
-        if not np.isnan(a[-1, 0]):
-            total += a[-1, 0]
-            count += 1
-        if not np.isnan(a[1, 0]):
-            total += a[1, 0]
-            count += 1
-        if not np.isnan(a[0, -1]):
-            total += a[0, -1]
-            count += 1
-        if not np.isnan(a[0, 1]):
-            total += a[0, 1]
-            count += 1
-        return total / count
-    else:
-        return a[0, 0]
+    # Was a @stencil kernel, but numba's stencil compiler hit an internal
+    # AttributeError under this numba/Python combo -- plain @njit with an
+    # explicit loop avoids the stencil machinery entirely. Border rows/cols
+    # are left untouched (callers only ever consume the [1:-1, 1:-1] interior).
+    rows, cols = a.shape
+    out = a.copy()
+    for i in range(1, rows - 1):
+        for j in range(1, cols - 1):
+            if np.isnan(a[i, j]) and (not np.isnan(a[i - 1, j]) or not np.isnan(a[i + 1, j]) or
+                                      not np.isnan(a[i, j - 1]) or not np.isnan(a[i, j + 1])):
+                total = 0.0
+                count = 0
+                if not np.isnan(a[i - 1, j]):
+                    total += a[i - 1, j]
+                    count += 1
+                if not np.isnan(a[i + 1, j]):
+                    total += a[i + 1, j]
+                    count += 1
+                if not np.isnan(a[i, j - 1]):
+                    total += a[i, j - 1]
+                    count += 1
+                if not np.isnan(a[i, j + 1]):
+                    total += a[i, j + 1]
+                    count += 1
+                out[i, j] = total / count
+    return out
