@@ -16,14 +16,12 @@ from pyproj import Proj, Transformer
 
 
 def openRaster(raster):
-    closeOnExit = False
+    closeOnExit = True
     try:
         raster.GetProjection()
-        openRaster = raster
+        return raster, closeOnExit
     except AttributeError:
-        openRaster = gdal.Open(str(raster))
-        closeOnExit = True
-    return openRaster, closeOnExit
+        return gdal.Open(str(raster)), closeOnExit
 
 
 def getRasterInfo(raster):
